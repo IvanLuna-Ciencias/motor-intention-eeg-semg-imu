@@ -1,0 +1,153 @@
+﻿# ============================================================
+# Python
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# ============================================================
+# Virtual environments
+# ============================================================
+
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+.ipynb_checkpoints/
+
+# ============================================================
+# IDEs and editors
+# ============================================================
+
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ============================================================
+# Operating system files
+# ============================================================
+
+desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================
+# Logs and temporary files
+# ============================================================
+
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*.cache
+
+# ============================================================
+# Biomedical / experimental data
+# Do not upload raw or sensitive participant data.
+# ============================================================
+
+data/raw/
+data/interim/
+data/processed/
+data/external/
+data/private/
+data/consents/
+data/participants/
+data/identifiable/
+data/**/raw/
+data/**/private/
+data/**/consents/
+
+# Common biomedical / tabular / signal files
+*.edf
+*.bdf
+*.set
+*.fdt
+*.vhdr
+*.vmrk
+*.eeg
+*.mat
+*.h5
+*.hdf5
+*.xdf
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.joblib
+
+# Allow documentation README files inside data
+!data/README.md
+!data/sample/
+!data/sample/README.md
+
+# If synthetic examples are added later, allow only explicitly named sample files
+!data/sample/synthetic_*.csv
+!data/sample/example_*.csv
+!data/sample/*.json
+
+# ============================================================
+# Models and trained artifacts
+# ============================================================
+
+models/*
+!models/README.md
+
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.sav
+
+# ============================================================
+# Results, reports, figures, and outputs
+# ============================================================
+
+results/*
+!results/README.md
+
+outputs/
+reports/
+figures/
+plots/
+artifacts/
+exports/
+
+# ============================================================
+# Local configuration and secrets
+# ============================================================
+
+.env
+.env.*
+*.env
+secrets/
+credentials/
+tokens/
+*.key
+*.pem
+
+# ============================================================
+# Personal/local paths
+# ============================================================
+
+local_config.*
+paths_local.*
+user_paths.*
