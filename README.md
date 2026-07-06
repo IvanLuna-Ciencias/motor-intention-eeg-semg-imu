@@ -192,7 +192,7 @@ The MYO-specific environment will be documented later when the corresponding cle
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/motor-intention-eeg-semg-imu.git
+git clone https://github.com/IvanLuna-Ciencias/motor-intention-eeg-semg-imu.git
 cd motor-intention-eeg-semg-imu
 ```
 
