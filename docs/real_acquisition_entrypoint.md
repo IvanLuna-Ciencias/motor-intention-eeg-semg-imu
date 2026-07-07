@@ -99,3 +99,17 @@ The smoke test performs only a short connectivity check:
 - Close the session.
 
 This is not yet the full experimental acquisition protocol.
+
+## Biosignalsplux smoke test
+
+The entry point also includes an optional Biosignalsplux sEMG smoke test.
+
+It is disabled by default and only runs when both flags are used:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux
+~~~
+
+The current smoke test validates that the Biosignalsplux API can be imported and that a device class can be created from the public configuration.
+
+Full sEMG streaming will be added after validating the hardware-specific API behavior on the acquisition computer.

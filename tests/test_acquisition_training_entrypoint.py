@@ -69,3 +69,29 @@ def test_acquisition_training_execute_hardware_without_block_returns_2():
 
     assert result.returncode == 2
     assert "no hardware block was selected" in result.stdout
+def test_acquisition_training_biosignalsplux_smoke_test_safe_exit():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--subject-id",
+            "sub-test001",
+            "--session-id",
+            "ses-01",
+            "--movement-block",
+            "Codo",
+            "--total-trials",
+            "4",
+            "--execute-hardware",
+            "--use-biosignalsplux",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode in (0, 4)
+    assert (
+        "Biosignalsplux sEMG smoke test" in result.stdout
+        or "Biosignalsplux smoke test could not run" in result.stdout
+    )

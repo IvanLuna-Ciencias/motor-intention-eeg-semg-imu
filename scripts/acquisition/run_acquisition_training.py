@@ -35,6 +35,10 @@ from motor_intention.acquisition.device_config import (
     AcquisitionDeviceConfig,
     load_acquisition_device_config,
 )
+from motor_intention.acquisition.biosignalsplux import (
+    BiosignalspluxDependencyError,
+    create_biosignalsplux_device_class,
+)
 from motor_intention.acquisition.mindrove import (
     MindRoveDependencyError,
     MindRoveEEGDevice,
@@ -101,6 +105,43 @@ def print_acquisition_plan(plan: Dict[str, object]) -> None:
 
     for key, value in output_files.items():
         print(f"  {key}: {value}")
+
+
+def run_biosignalsplux_smoke_test(
+    device_config: AcquisitionDeviceConfig,
+) -> Dict[str, object]:
+    """Run a short Biosignalsplux sEMG smoke test.
+
+    This smoke test validates that the Biosignalsplux API can be imported and
+    that a device class can be created from the public configuration.
+
+    Full streaming will be added after validating the hardware-specific API
+    behavior on the acquisition computer.
+    """
+    print("")
+    print("Biosignalsplux sEMG smoke test")
+    print("------------------------------")
+
+    device_class = create_biosignalsplux_device_class(
+        config=device_config.biosignalsplux,
+    )
+
+    print("Biosignalsplux device class created successfully.")
+    print(f"Sampling rate: {device_config.biosignalsplux.sampling_rate_hz} Hz")
+    print(f"Channels mask: {device_config.biosignalsplux.channels_mask}")
+    print(f"Resolution:    {device_config.biosignalsplux.resolution_bits} bits")
+
+    return {
+        "biosignalsplux_smoke_test": "completed",
+        "biosignalsplux_device_class": device_class.__name__,
+        "biosignalsplux_sampling_rate_hz": (
+            device_config.biosignalsplux.sampling_rate_hz
+        ),
+        "biosignalsplux_channels_mask": device_config.biosignalsplux.channels_mask,
+        "biosignalsplux_resolution_bits": (
+            device_config.biosignalsplux.resolution_bits
+        ),
+    }
 
 
 def run_mindrove_smoke_test(
@@ -213,6 +254,11 @@ def main() -> int:
         help="Run a short MindRove EEG smoke test. Requires --execute-hardware.",
     )
     parser.add_argument(
+        "--use-biosignalsplux",
+        action="store_true",
+        help="Run a short Biosignalsplux sEMG smoke test. Requires --execute-hardware.",
+    )
+    parser.add_argument(
         "--mindrove-preview-points",
         type=int,
         default=250,
@@ -275,7 +321,7 @@ def main() -> int:
             "device_config": device_config.to_dict(),
             "selected_hardware_blocks": {
                 "mindrove": args.use_mindrove,
-                "biosignalsplux": False,
+                "biosignalsplux": args.use_biosignalsplux,
                 "myo_tcp_receiver": False,
             },
             "notes": (
@@ -296,10 +342,10 @@ def main() -> int:
         print("Dry run completed. No real hardware was initialized.")
         return 0
 
-    if args.execute_hardware and not args.use_mindrove:
+    if args.execute_hardware and not args.use_mindrove and not args.use_biosignalsplux:
         print("")
         print("Hardware execution was requested, but no hardware block was selected.")
-        print("Use --use-mindrove to run the MindRove EEG smoke test.")
+        print("Use --use-mindrove or --use-biosignalsplux to run a smoke test.")
         return 2
 
     if args.use_mindrove:
@@ -316,6 +362,19 @@ def main() -> int:
             print("MindRove smoke test could not run.")
             print(str(exc))
             return 3
+
+    if args.use_biosignalsplux:
+        try:
+            biosignalsplux_result = run_biosignalsplux_smoke_test(
+                device_config=device_config,
+            )
+            metadata.update(biosignalsplux_result)
+
+        except BiosignalspluxDependencyError as exc:
+            print("")
+            print("Biosignalsplux smoke test could not run.")
+            print(str(exc))
+            return 4
 
     print("")
     print("Selected hardware block execution completed.")
