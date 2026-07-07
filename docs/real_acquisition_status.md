@@ -211,3 +211,34 @@ Pending validation:
 - Verify that saved EEG shape is correct.
 - Verify that event CSV timing matches inserted EEG markers.
 - Confirm behavior during manual interruption.
+
+## sEMG-only full protocol acquisition mode
+
+The acquisition entry point now includes a protected sEMG-only full protocol acquisition mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux --run-semg-protocol
+~~~
+
+Current status:
+
+- Creates the Biosignalsplux device class from configuration.
+- Starts sEMG acquisition before the protocol.
+- Runs the timed protocol using `ProtocolRunner`.
+- Records protocol events using `ProtocolEventRecorder`.
+- Stops sEMG acquisition explicitly after protocol completion.
+- Retrieves available sEMG data.
+- Saves sEMG, events, and metadata files.
+- Closes Biosignalsplux resources safely.
+
+Design note:
+
+The protocol controls timing and events, but the sEMG acquisition lifetime is managed explicitly by the acquisition entry point.
+
+Pending validation:
+
+- Test with the real Biosignalsplux device.
+- Verify that the acquisition thread starts and stops correctly.
+- Verify that saved sEMG shape is correct.
+- Confirm behavior during manual interruption.
+- Validate that the `plux` API loop exits cleanly after `stop_acquisition()`.
