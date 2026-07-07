@@ -1,0 +1,32 @@
+﻿# Example acquisition configuration.
+# Copy this file locally and adapt it to your hardware setup.
+#
+# Do not commit private/local hardware paths, participant data, or private IPs.
+
+mindrove:
+  connection_mode: "WiFi"
+  mac_address: ""
+  eeg_units: "uV"
+
+biosignalsplux:
+  address: ""
+  sampling_rate_hz: 1000.0
+  channels_mask: 3
+  resolution_bits: 16
+  dll_path: ""
+
+myo:
+  receiver_host: "127.0.0.1"
+  receiver_port: 9999
+  sender_mode: "synthetic"
+  synthetic_rate_hz: 50.0
+  synthetic_duration_sec: 10.0
+  sdk_path_env_var: "MYO_SDK_PATH"
+
+labview:
+  enabled: false
+  host: "127.0.0.1"
+  port: 5005
+  keepalive_hz: 25.0
+
+output_root: "outputs/acquisition"
