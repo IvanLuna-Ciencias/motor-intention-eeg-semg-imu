@@ -272,3 +272,29 @@ Pending validation:
 - Verify MYO message count and timestamp behavior.
 - Confirm behavior during manual interruption.
 - Validate synchronization between MYO timestamps and protocol events.
+
+## MYO synthetic sender and protocol receiver validation
+
+The MYO-only full protocol acquisition mode was validated using the synthetic MYO sender.
+
+Test structure:
+
+~~~text
+Terminal 1:
+run_acquisition_training.py with --use-myo-receiver --run-myo-protocol
+
+Terminal 2:
+run_myo_sender.py with a local YAML configuration pointing to the same receiver port
+~~~
+
+Result:
+
+- The protocol receiver started correctly.
+- The synthetic sender connected to the receiver.
+- MYO-like messages were received during protocol execution.
+- The acquisition script saved MYO messages, protocol events, and metadata.
+- The receiver stopped safely after protocol completion.
+
+Design note:
+
+The MYO sender remains a separate process by design. This preserves compatibility with the original architecture, where the MYO SDK sender may require a separate Python environment.
