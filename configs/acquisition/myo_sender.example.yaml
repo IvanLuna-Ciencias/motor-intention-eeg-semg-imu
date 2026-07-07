@@ -1,0 +1,16 @@
+﻿# Example MYO sender configuration.
+# Copy this file locally and adapt it to your hardware setup.
+#
+# Do not commit private/local hardware paths.
+
+receiver:
+  host: "127.0.0.1"
+  port: 9999
+
+sender:
+  mode: "synthetic"
+  synthetic_rate_hz: 50.0
+  duration_sec: 10.0
+
+myo:
+  sdk_path_env_var: "MYO_SDK_PATH"
