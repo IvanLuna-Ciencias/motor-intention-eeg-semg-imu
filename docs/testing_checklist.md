@@ -146,3 +146,25 @@ The tests also verify:
 - Output filename construction.
 - Device configuration validation.
 - YAML configuration loading and saving.
+
+## Complete synthetic acquisition demo
+
+A complete synthetic acquisition demo is available at:
+
+~~~text
+scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+Run it with:
+
+~~~bash
+python scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+The script generates synthetic EEG, sEMG, MYO, event, and metadata files under:
+
+~~~text
+outputs/acquisition/
+~~~
+
+The `outputs/` folder is ignored by Git and should not be committed.
