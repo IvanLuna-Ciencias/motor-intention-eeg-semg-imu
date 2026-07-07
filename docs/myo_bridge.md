@@ -175,3 +175,27 @@ python scripts/acquisition/run_myo_sender.py --help
 ~~~
 
 Real MYO SDK support will be added later after cleaning the legacy sender code.
+
+## Manual bridge test
+
+A manual bridge test can be performed using two terminals.
+
+Terminal 1 starts the demo receiver:
+
+~~~bash
+python scripts/acquisition/run_myo_receiver_demo.py
+~~~
+
+Terminal 2 starts the synthetic sender:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py
+~~~
+
+If the bridge works correctly, the receiver should count incoming messages and optionally save them to:
+
+~~~text
+data/sample/synthetic_myo_from_tcp.csv
+~~~
+
+This generated CSV file is only for local testing and should not be committed by default.

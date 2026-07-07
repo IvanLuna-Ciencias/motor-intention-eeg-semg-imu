@@ -107,3 +107,19 @@ python scripts/acquisition/run_myo_sender.py --help
 ~~~
 
 This command should display the script options without connecting to the MYO Armband.
+
+## Manual MYO bridge test
+
+The MYO TCP bridge can be tested without hardware using:
+
+~~~bash
+python scripts/acquisition/run_myo_receiver_demo.py
+~~~
+
+and, in a second terminal:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py
+~~~
+
+The generated file `data/sample/synthetic_myo_from_tcp.csv` is a local test artifact and should not be committed.
