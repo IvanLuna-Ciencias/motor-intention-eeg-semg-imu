@@ -186,3 +186,29 @@ Additional documentation:
 ~~~text
 docs/acquisition_hardware_wrappers.md
 ~~~
+
+## Real acquisition entry point check
+
+The repository includes a first public-safe real acquisition entry point:
+
+~~~text
+scripts/acquisition/run_acquisition_training.py
+~~~
+
+Current mode:
+
+~~~text
+dry-run only
+~~~
+
+Example command:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4
+~~~
+
+Documentation:
+
+~~~text
+docs/real_acquisition_entrypoint.md
+~~~
