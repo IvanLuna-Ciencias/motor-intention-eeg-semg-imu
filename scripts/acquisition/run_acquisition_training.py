@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 from typing import Dict, List
 
+import numpy as np
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SRC_DIR = PROJECT_ROOT / "src"
@@ -51,7 +53,7 @@ from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
-from motor_intention.acquisition.storage import save_events_csv, save_metadata_json
+from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json
 from motor_intention.communication.tcp_myo import MyoReceiverConfig, MyoTCPReceiver
 from motor_intention.protocols.event_markers import (
     MANUAL_STOP_MARKER,
@@ -197,6 +199,115 @@ def run_biosignalsplux_smoke_test(
             device_config.biosignalsplux.resolution_bits
         ),
     }
+
+
+def _select_eeg_rows(board_data, eeg_channels):
+    """Select EEG rows from MindRove board data when channel indices are available."""
+    data = np.asarray(board_data)
+
+    if data.ndim != 2:
+        raise ValueError(f"Expected 2D EEG board data, got shape {data.shape}")
+
+    valid_channels = []
+    for channel in eeg_channels:
+        try:
+            channel_idx = int(channel)
+        except (TypeError, ValueError):
+            continue
+
+        if 0 <= channel_idx < data.shape[0]:
+            valid_channels.append(channel_idx)
+
+    if valid_channels:
+        return data[valid_channels, :]
+
+    return data
+
+
+def run_mindrove_eeg_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+) -> Dict[str, object]:
+    """Run EEG-only full protocol acquisition using MindRove.
+
+    The EEG stream is started before the protocol and remains active while the
+    protocol runner emits events and markers. Data are retrieved only after the
+    protocol finishes and the device is closed safely.
+    """
+    print("")
+    print("MindRove EEG-only protocol acquisition")
+    print("--------------------------------------")
+
+    device = MindRoveEEGDevice(config=device_config.mindrove)
+    recorder = ProtocolEventRecorder()
+    marker_callback = DeviceMarkerCallback(device=device)
+
+    try:
+        print("Preparing MindRove session...")
+        device.prepare()
+
+        sampling_rate_hz = device.get_sampling_rate_hz()
+        eeg_channels = device.get_eeg_channels()
+
+        print(f"Sampling rate: {sampling_rate_hz} Hz")
+        print(f"EEG channels:  {eeg_channels}")
+
+        print("Starting continuous EEG stream...")
+        device.start_stream()
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder, marker_callback],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Retrieving available EEG data...")
+        board_data = device.get_all_data()
+        eeg_data = _select_eeg_rows(board_data, eeg_channels)
+
+        eeg_path = save_eeg_csv(
+            eeg_data,
+            output_files["eeg"],
+            sampling_rate_hz=sampling_rate_hz,
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"EEG data shape:   {eeg_data.shape}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"Inserted markers: {len(marker_callback.inserted_markers)}")
+        print(f"EEG saved to:     {eeg_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "mindrove_eeg_protocol_acquisition": "completed",
+            "mindrove_sampling_rate_hz": sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_eeg_shape": list(eeg_data.shape),
+            "mindrove_protocol_event_count": len(result.events),
+            "mindrove_inserted_marker_count": len(marker_callback.inserted_markers),
+            "protocol_time_scale": time_scale,
+            "eeg_output_file": str(eeg_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Closing MindRove session...")
+        device.close()
 
 
 def run_mindrove_protocol_marker_test(
@@ -421,6 +532,11 @@ def main() -> int:
         help="Run the full protocol and insert markers into MindRove. Requires --execute-hardware --use-mindrove.",
     )
     parser.add_argument(
+        "--run-eeg-protocol",
+        action="store_true",
+        help="Run EEG-only full protocol acquisition with MindRove. Requires --execute-hardware --use-mindrove.",
+    )
+    parser.add_argument(
         "--protocol-time-scale",
         type=float,
         default=1.0,
@@ -524,7 +640,16 @@ def main() -> int:
 
     if args.use_mindrove:
         try:
-            if args.run_protocol_markers:
+            if args.run_eeg_protocol:
+                mindrove_result = run_mindrove_eeg_protocol_acquisition(
+                    device_config=device_config,
+                    output_files=output_files,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                )
+            elif args.run_protocol_markers:
                 mindrove_result = run_mindrove_protocol_marker_test(
                     device_config=device_config,
                     movement_block=session_config.movement_block,
@@ -541,6 +666,11 @@ def main() -> int:
                 )
 
             metadata.update(mindrove_result)
+
+            if args.run_eeg_protocol:
+                save_metadata_json(metadata, output_files["metadata"])
+                print("")
+                print(f"Metadata saved to: {output_files['metadata']}")
 
         except MindRoveDependencyError as exc:
             print("")

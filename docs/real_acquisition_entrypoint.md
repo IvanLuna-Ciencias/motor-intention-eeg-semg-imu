@@ -187,3 +187,30 @@ Current purpose:
 - Keep acquisition and event logic separated.
 
 This is not yet the full multimodal acquisition protocol.
+
+## EEG-only full protocol acquisition
+
+The entry point now includes a protected EEG-only full protocol acquisition mode using MindRove.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-eeg-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-eeg-protocol --protocol-time-scale 0.1
+~~~
+
+This mode:
+
+- Starts the MindRove EEG stream before the protocol.
+- Keeps the EEG stream active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Retrieves available EEG data after the protocol finishes.
+- Saves EEG data, events, and metadata.
+- Closes the MindRove session safely.
+
+The protocol runner controls timing and markers, but the acquisition stream is managed explicitly by the acquisition entry point.
