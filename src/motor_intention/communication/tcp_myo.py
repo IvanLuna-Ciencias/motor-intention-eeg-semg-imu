@@ -161,6 +161,8 @@ class MyoTCPReceiver:
                     self.send_start()
                 except socket.timeout:
                     continue
+                except OSError:
+                    break
 
             if self._connection is not None:
                 self._receive_loop(self._connection)
