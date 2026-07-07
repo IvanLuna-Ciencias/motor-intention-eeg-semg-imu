@@ -168,3 +168,21 @@ outputs/acquisition/
 ~~~
 
 The `outputs/` folder is ignored by Git and should not be committed.
+
+## Hardware wrapper checks
+
+The repository includes dependency-safe hardware wrappers for:
+
+~~~text
+src/motor_intention/acquisition/mindrove.py
+src/motor_intention/acquisition/biosignalsplux.py
+src/motor_intention/communication/tcp_myo.py
+~~~
+
+These wrappers are designed to be importable and testable without requiring physical hardware.
+
+Additional documentation:
+
+~~~text
+docs/acquisition_hardware_wrappers.md
+~~~
