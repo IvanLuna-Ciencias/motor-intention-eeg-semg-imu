@@ -298,3 +298,33 @@ This mode:
 - Closes MindRove and the MYO receiver safely.
 
 The MYO sender remains a separate process by design.
+
+## EEG+sEMG+MYO full multimodal protocol acquisition
+
+The entry point now includes a protected full multimodal protocol acquisition mode.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol
+~~~
+
+For local MYO receiver testing, a temporary receiver port can be selected:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts MindRove EEG streaming before the protocol.
+- Starts Biosignalsplux sEMG acquisition before the protocol.
+- Starts the MYO TCP receiver before the protocol.
+- Keeps all acquisition streams active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG, sEMG, and MYO data after the protocol finishes.
+- Saves EEG, sEMG, MYO, events, and metadata.
+- Closes all hardware resources safely.
+
+The protocol runner controls timing and events, while acquisition lifetimes are managed explicitly by the acquisition entry point.
