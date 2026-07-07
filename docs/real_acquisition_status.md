@@ -151,3 +151,34 @@ src/motor_intention/acquisition/protocol_runner.py
 ~~~
 
 This module will coordinate the timed experimental protocol and will later connect the acquisition devices, event markers, and storage utilities.
+
+## MindRove protocol marker mode
+
+The acquisition entry point now includes a protected MindRove protocol marker mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-protocol-markers
+~~~
+
+This mode connects:
+
+~~~text
+ProtocolRunner
+ProtocolEventRecorder
+DeviceMarkerCallback
+MindRoveEEGDevice
+~~~
+
+Current status:
+
+- Runs the timed protocol.
+- Forwards protocol markers to MindRove.
+- Reads an EEG preview after the protocol.
+- Closes the MindRove session safely.
+
+Pending:
+
+- Validate marker insertion with the real MindRove device.
+- Save EEG stream data from the full protocol.
+- Compare exported event CSV with MindRove marker timing.
+- Extend the same protocol runner structure to sEMG and MYO acquisition.
