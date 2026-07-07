@@ -21,6 +21,11 @@ def test_acquisition_training_help_runs():
     assert "Run real multimodal acquisition" in result.stdout
     assert "--run-protocol-markers" in result.stdout
     assert "--protocol-time-scale" in result.stdout
+    assert "--run-eeg-protocol" in result.stdout
+    assert "--run-eeg-myo-protocol" in result.stdout
+    assert "--run-multimodal-protocol" in result.stdout
+    assert "--run-semg-protocol" in result.stdout
+    assert "--run-myo-protocol" in result.stdout
 
 
 def test_acquisition_training_dry_run_runs():

@@ -187,3 +187,144 @@ Current purpose:
 - Keep acquisition and event logic separated.
 
 This is not yet the full multimodal acquisition protocol.
+
+## EEG-only full protocol acquisition
+
+The entry point now includes a protected EEG-only full protocol acquisition mode using MindRove.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-eeg-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-eeg-protocol --protocol-time-scale 0.1
+~~~
+
+This mode:
+
+- Starts the MindRove EEG stream before the protocol.
+- Keeps the EEG stream active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Retrieves available EEG data after the protocol finishes.
+- Saves EEG data, events, and metadata.
+- Closes the MindRove session safely.
+
+The protocol runner controls timing and markers, but the acquisition stream is managed explicitly by the acquisition entry point.
+
+## sEMG-only full protocol acquisition
+
+The entry point now includes a protected sEMG-only full protocol acquisition mode using Biosignalsplux.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux --run-semg-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux --run-semg-protocol --protocol-time-scale 0.1
+~~~
+
+This mode:
+
+- Starts Biosignalsplux sEMG acquisition before the protocol.
+- Keeps sEMG acquisition active while the protocol runs.
+- Records protocol events using `ProtocolEventRecorder`.
+- Stops sEMG acquisition explicitly after the protocol.
+- Retrieves available sEMG data.
+- Saves sEMG data, events, and metadata.
+- Closes Biosignalsplux resources safely.
+
+The protocol runner controls timing and events, but the acquisition lifetime is managed explicitly by the acquisition entry point.
+
+## MYO-only full protocol acquisition
+
+The entry point now includes a protected MYO-only full protocol acquisition mode using the TCP receiver.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --run-myo-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --run-myo-protocol --protocol-time-scale 0.1 --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts the MYO TCP receiver before the protocol.
+- Keeps the receiver active while the protocol runs.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available MYO messages after the protocol finishes.
+- Saves MYO messages, events, and metadata.
+- Stops the MYO receiver safely.
+
+The receiver can be tested with the synthetic MYO sender or with the real MYO SDK sender.
+
+## EEG+MYO full protocol acquisition
+
+The entry point now includes a protected EEG+MYO full protocol acquisition mode.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-myo-receiver --run-eeg-myo-protocol
+~~~
+
+For local validation with the MYO synthetic sender, use a temporary MYO receiver port:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-myo-receiver --run-eeg-myo-protocol --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts MindRove EEG streaming before the protocol.
+- Starts the MYO TCP receiver before the protocol.
+- Keeps both acquisition streams active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG data and MYO messages after the protocol finishes.
+- Saves EEG, MYO, events, and metadata.
+- Closes MindRove and the MYO receiver safely.
+
+The MYO sender remains a separate process by design.
+
+## EEG+sEMG+MYO full multimodal protocol acquisition
+
+The entry point now includes a protected full multimodal protocol acquisition mode.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol
+~~~
+
+For local MYO receiver testing, a temporary receiver port can be selected:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts MindRove EEG streaming before the protocol.
+- Starts Biosignalsplux sEMG acquisition before the protocol.
+- Starts the MYO TCP receiver before the protocol.
+- Keeps all acquisition streams active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG, sEMG, and MYO data after the protocol finishes.
+- Saves EEG, sEMG, MYO, events, and metadata.
+- Closes all hardware resources safely.
+
+The protocol runner controls timing and events, while acquisition lifetimes are managed explicitly by the acquisition entry point.

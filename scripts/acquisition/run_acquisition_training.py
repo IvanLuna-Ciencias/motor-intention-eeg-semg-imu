@@ -20,9 +20,12 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Dict, List
+
+import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +54,7 @@ from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
-from motor_intention.acquisition.storage import save_events_csv, save_metadata_json
+from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json, save_myo_csv, save_semg_csv
 from motor_intention.communication.tcp_myo import MyoReceiverConfig, MyoTCPReceiver
 from motor_intention.protocols.event_markers import (
     MANUAL_STOP_MARKER,
@@ -112,6 +115,92 @@ def print_acquisition_plan(plan: Dict[str, object]) -> None:
         print(f"  {key}: {value}")
 
 
+def run_myo_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+    port_override: int | None = None,
+) -> Dict[str, object]:
+    """Run MYO-only full protocol acquisition using the TCP receiver.
+
+    The TCP receiver is started before the protocol and stopped explicitly after
+    the protocol finishes. It can receive messages from the synthetic sender or
+    from the real MYO SDK sender.
+    """
+    print("")
+    print("MYO-only protocol acquisition")
+    print("-----------------------------")
+
+    receiver_port = (
+        port_override
+        if port_override is not None
+        else device_config.myo.receiver_port
+    )
+
+    receiver_config = MyoReceiverConfig(
+        host=device_config.myo.receiver_host,
+        port=receiver_port,
+    )
+
+    receiver = MyoTCPReceiver(config=receiver_config)
+    recorder = ProtocolEventRecorder()
+
+    try:
+        print(f"Starting MYO TCP receiver at {receiver_config.host}:{receiver_config.port}")
+        receiver.start()
+
+        time.sleep(0.2)
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Retrieving available MYO messages...")
+        myo_messages = receiver.get_messages()
+
+        myo_path = save_myo_csv(
+            myo_messages,
+            output_files["myo"],
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"MYO messages:     {len(myo_messages)}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"MYO saved to:     {myo_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "myo_protocol_acquisition": "completed",
+            "myo_receiver_host": receiver_config.host,
+            "myo_receiver_port": receiver_config.port,
+            "myo_message_count": len(myo_messages),
+            "myo_protocol_event_count": len(result.events),
+            "protocol_time_scale": time_scale,
+            "myo_output_file": str(myo_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Stopping MYO TCP receiver...")
+        receiver.stop()
+
+
 def run_myo_receiver_smoke_test(
     device_config: AcquisitionDeviceConfig,
     duration_sec: float,
@@ -162,6 +251,116 @@ def run_myo_receiver_smoke_test(
         receiver.stop()
 
 
+def run_biosignalsplux_semg_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+) -> Dict[str, object]:
+    """Run sEMG-only full protocol acquisition using Biosignalsplux.
+
+    Acquisition is started before the protocol and stopped explicitly after the
+    protocol finishes or after a safe interruption.
+    """
+    print("")
+    print("Biosignalsplux sEMG-only protocol acquisition")
+    print("---------------------------------------------")
+
+    device_class = create_biosignalsplux_device_class(
+        config=device_config.biosignalsplux,
+    )
+    device = device_class()
+    recorder = ProtocolEventRecorder()
+    acquisition_errors = []
+
+    def acquisition_target():
+        try:
+            device.start_acquisition()
+        except Exception as exc:
+            acquisition_errors.append(exc)
+
+    acquisition_thread = threading.Thread(
+        target=acquisition_target,
+        name="BiosignalspluxAcquisitionThread",
+        daemon=True,
+    )
+
+    try:
+        print("Starting continuous sEMG acquisition...")
+        acquisition_thread.start()
+
+        time.sleep(0.5)
+
+        if acquisition_errors:
+            raise acquisition_errors[0]
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Stopping sEMG acquisition explicitly...")
+        device.stop_acquisition()
+        acquisition_thread.join(timeout=2.0)
+
+        semg_data = device.get_all_data()
+
+        semg_path = save_semg_csv(
+            semg_data,
+            output_files["semg"],
+            sampling_rate_hz=device_config.biosignalsplux.sampling_rate_hz,
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"sEMG data shape:  {semg_data.shape}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"sEMG saved to:    {semg_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "biosignalsplux_semg_protocol_acquisition": "completed",
+            "biosignalsplux_sampling_rate_hz": (
+                device_config.biosignalsplux.sampling_rate_hz
+            ),
+            "biosignalsplux_semg_shape": list(semg_data.shape),
+            "biosignalsplux_protocol_event_count": len(result.events),
+            "protocol_time_scale": time_scale,
+            "semg_output_file": str(semg_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Closing Biosignalsplux resources...")
+        try:
+            device.stop_acquisition()
+        except Exception:
+            pass
+
+        try:
+            acquisition_thread.join(timeout=2.0)
+        except RuntimeError:
+            pass
+
+        try:
+            device.close_resources()
+        except Exception:
+            pass
+
+
 def run_biosignalsplux_smoke_test(
     device_config: AcquisitionDeviceConfig,
 ) -> Dict[str, object]:
@@ -197,6 +396,414 @@ def run_biosignalsplux_smoke_test(
             device_config.biosignalsplux.resolution_bits
         ),
     }
+
+
+def _select_eeg_rows(board_data, eeg_channels):
+    """Select EEG rows from MindRove board data when channel indices are available."""
+    data = np.asarray(board_data)
+
+    if data.ndim != 2:
+        raise ValueError(f"Expected 2D EEG board data, got shape {data.shape}")
+
+    valid_channels = []
+    for channel in eeg_channels:
+        try:
+            channel_idx = int(channel)
+        except (TypeError, ValueError):
+            continue
+
+        if 0 <= channel_idx < data.shape[0]:
+            valid_channels.append(channel_idx)
+
+    if valid_channels:
+        return data[valid_channels, :]
+
+    return data
+
+
+def run_multimodal_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+    myo_port_override: int | None = None,
+) -> Dict[str, object]:
+    """Run EEG+sEMG+MYO full protocol acquisition.
+
+    All acquisition streams are started before the protocol. The protocol emits
+    events and forwards markers to MindRove. Data are retrieved after protocol
+    completion, and all resources are closed explicitly.
+    """
+    print("")
+    print("EEG+sEMG+MYO multimodal protocol acquisition")
+    print("--------------------------------------------")
+
+    receiver_port = (
+        myo_port_override
+        if myo_port_override is not None
+        else device_config.myo.receiver_port
+    )
+
+    receiver_config = MyoReceiverConfig(
+        host=device_config.myo.receiver_host,
+        port=receiver_port,
+    )
+
+    mindrove_device = MindRoveEEGDevice(config=device_config.mindrove)
+
+    biosignalsplux_class = create_biosignalsplux_device_class(
+        config=device_config.biosignalsplux,
+    )
+    semg_device = biosignalsplux_class()
+
+    myo_receiver = MyoTCPReceiver(config=receiver_config)
+
+    recorder = ProtocolEventRecorder()
+    marker_callback = DeviceMarkerCallback(device=mindrove_device)
+    semg_errors = []
+
+    def semg_acquisition_target():
+        try:
+            semg_device.start_acquisition()
+        except Exception as exc:
+            semg_errors.append(exc)
+
+    semg_thread = threading.Thread(
+        target=semg_acquisition_target,
+        name="BiosignalspluxMultimodalThread",
+        daemon=True,
+    )
+
+    try:
+        print("Preparing MindRove session...")
+        mindrove_device.prepare()
+
+        eeg_sampling_rate_hz = mindrove_device.get_sampling_rate_hz()
+        eeg_channels = mindrove_device.get_eeg_channels()
+
+        print(f"MindRove sampling rate: {eeg_sampling_rate_hz} Hz")
+        print(f"MindRove EEG channels:  {eeg_channels}")
+
+        print(f"Starting MYO TCP receiver at {receiver_config.host}:{receiver_config.port}")
+        myo_receiver.start()
+
+        print("Starting continuous sEMG acquisition...")
+        semg_thread.start()
+
+        time.sleep(0.5)
+
+        if semg_errors:
+            raise semg_errors[0]
+
+        print("Starting continuous EEG stream...")
+        mindrove_device.start_stream()
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder, marker_callback],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Stopping sEMG acquisition explicitly...")
+        semg_device.stop_acquisition()
+        semg_thread.join(timeout=2.0)
+
+        print("Retrieving available EEG, sEMG, and MYO data...")
+        board_data = mindrove_device.get_all_data()
+        eeg_data = _select_eeg_rows(board_data, eeg_channels)
+        semg_data = semg_device.get_all_data()
+        myo_messages = myo_receiver.get_messages()
+
+        eeg_path = save_eeg_csv(
+            eeg_data,
+            output_files["eeg"],
+            sampling_rate_hz=eeg_sampling_rate_hz,
+        )
+
+        semg_path = save_semg_csv(
+            semg_data,
+            output_files["semg"],
+            sampling_rate_hz=device_config.biosignalsplux.sampling_rate_hz,
+        )
+
+        myo_path = save_myo_csv(
+            myo_messages,
+            output_files["myo"],
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"EEG data shape:   {eeg_data.shape}")
+        print(f"sEMG data shape:  {semg_data.shape}")
+        print(f"MYO messages:     {len(myo_messages)}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"Inserted markers: {len(marker_callback.inserted_markers)}")
+        print(f"EEG saved to:     {eeg_path}")
+        print(f"sEMG saved to:    {semg_path}")
+        print(f"MYO saved to:     {myo_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "multimodal_protocol_acquisition": "completed",
+            "mindrove_sampling_rate_hz": eeg_sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_eeg_shape": list(eeg_data.shape),
+            "biosignalsplux_sampling_rate_hz": (
+                device_config.biosignalsplux.sampling_rate_hz
+            ),
+            "biosignalsplux_semg_shape": list(semg_data.shape),
+            "myo_receiver_host": receiver_config.host,
+            "myo_receiver_port": receiver_config.port,
+            "myo_message_count": len(myo_messages),
+            "protocol_event_count": len(result.events),
+            "inserted_marker_count": len(marker_callback.inserted_markers),
+            "protocol_time_scale": time_scale,
+            "eeg_output_file": str(eeg_path),
+            "semg_output_file": str(semg_path),
+            "myo_output_file": str(myo_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Stopping MYO TCP receiver...")
+        myo_receiver.stop()
+
+        print("Closing Biosignalsplux resources...")
+        try:
+            semg_device.stop_acquisition()
+        except Exception:
+            pass
+
+        try:
+            semg_thread.join(timeout=2.0)
+        except RuntimeError:
+            pass
+
+        try:
+            semg_device.close_resources()
+        except Exception:
+            pass
+
+        print("Closing MindRove session...")
+        mindrove_device.close()
+
+
+def run_mindrove_myo_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+    myo_port_override: int | None = None,
+) -> Dict[str, object]:
+    """Run EEG+MYO full protocol acquisition.
+
+    MindRove streaming and the MYO TCP receiver are started before the protocol.
+    The protocol emits events and forwards markers to MindRove. Data are
+    retrieved after the protocol finishes, and devices are closed explicitly.
+    """
+    print("")
+    print("EEG+MYO protocol acquisition")
+    print("----------------------------")
+
+    receiver_port = (
+        myo_port_override
+        if myo_port_override is not None
+        else device_config.myo.receiver_port
+    )
+
+    receiver_config = MyoReceiverConfig(
+        host=device_config.myo.receiver_host,
+        port=receiver_port,
+    )
+
+    mindrove_device = MindRoveEEGDevice(config=device_config.mindrove)
+    myo_receiver = MyoTCPReceiver(config=receiver_config)
+
+    recorder = ProtocolEventRecorder()
+    marker_callback = DeviceMarkerCallback(device=mindrove_device)
+
+    try:
+        print("Preparing MindRove session...")
+        mindrove_device.prepare()
+
+        sampling_rate_hz = mindrove_device.get_sampling_rate_hz()
+        eeg_channels = mindrove_device.get_eeg_channels()
+
+        print(f"MindRove sampling rate: {sampling_rate_hz} Hz")
+        print(f"MindRove EEG channels:  {eeg_channels}")
+
+        print(f"Starting MYO TCP receiver at {receiver_config.host}:{receiver_config.port}")
+        myo_receiver.start()
+
+        time.sleep(0.2)
+
+        print("Starting continuous EEG stream...")
+        mindrove_device.start_stream()
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder, marker_callback],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Retrieving available EEG and MYO data...")
+        board_data = mindrove_device.get_all_data()
+        eeg_data = _select_eeg_rows(board_data, eeg_channels)
+        myo_messages = myo_receiver.get_messages()
+
+        eeg_path = save_eeg_csv(
+            eeg_data,
+            output_files["eeg"],
+            sampling_rate_hz=sampling_rate_hz,
+        )
+
+        myo_path = save_myo_csv(
+            myo_messages,
+            output_files["myo"],
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"EEG data shape:   {eeg_data.shape}")
+        print(f"MYO messages:     {len(myo_messages)}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"Inserted markers: {len(marker_callback.inserted_markers)}")
+        print(f"EEG saved to:     {eeg_path}")
+        print(f"MYO saved to:     {myo_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "eeg_myo_protocol_acquisition": "completed",
+            "mindrove_sampling_rate_hz": sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_eeg_shape": list(eeg_data.shape),
+            "myo_receiver_host": receiver_config.host,
+            "myo_receiver_port": receiver_config.port,
+            "myo_message_count": len(myo_messages),
+            "protocol_event_count": len(result.events),
+            "inserted_marker_count": len(marker_callback.inserted_markers),
+            "protocol_time_scale": time_scale,
+            "eeg_output_file": str(eeg_path),
+            "myo_output_file": str(myo_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Stopping MYO TCP receiver...")
+        myo_receiver.stop()
+
+        print("Closing MindRove session...")
+        mindrove_device.close()
+
+
+def run_mindrove_eeg_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+) -> Dict[str, object]:
+    """Run EEG-only full protocol acquisition using MindRove.
+
+    The EEG stream is started before the protocol and remains active while the
+    protocol runner emits events and markers. Data are retrieved only after the
+    protocol finishes and the device is closed safely.
+    """
+    print("")
+    print("MindRove EEG-only protocol acquisition")
+    print("--------------------------------------")
+
+    device = MindRoveEEGDevice(config=device_config.mindrove)
+    recorder = ProtocolEventRecorder()
+    marker_callback = DeviceMarkerCallback(device=device)
+
+    try:
+        print("Preparing MindRove session...")
+        device.prepare()
+
+        sampling_rate_hz = device.get_sampling_rate_hz()
+        eeg_channels = device.get_eeg_channels()
+
+        print(f"Sampling rate: {sampling_rate_hz} Hz")
+        print(f"EEG channels:  {eeg_channels}")
+
+        print("Starting continuous EEG stream...")
+        device.start_stream()
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder, marker_callback],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Retrieving available EEG data...")
+        board_data = device.get_all_data()
+        eeg_data = _select_eeg_rows(board_data, eeg_channels)
+
+        eeg_path = save_eeg_csv(
+            eeg_data,
+            output_files["eeg"],
+            sampling_rate_hz=sampling_rate_hz,
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"EEG data shape:   {eeg_data.shape}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"Inserted markers: {len(marker_callback.inserted_markers)}")
+        print(f"EEG saved to:     {eeg_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "mindrove_eeg_protocol_acquisition": "completed",
+            "mindrove_sampling_rate_hz": sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_eeg_shape": list(eeg_data.shape),
+            "mindrove_protocol_event_count": len(result.events),
+            "mindrove_inserted_marker_count": len(marker_callback.inserted_markers),
+            "protocol_time_scale": time_scale,
+            "eeg_output_file": str(eeg_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Closing MindRove session...")
+        device.close()
 
 
 def run_mindrove_protocol_marker_test(
@@ -387,9 +994,19 @@ def main() -> int:
         help="Run a short Biosignalsplux sEMG smoke test. Requires --execute-hardware.",
     )
     parser.add_argument(
+        "--run-semg-protocol",
+        action="store_true",
+        help="Run sEMG-only full protocol acquisition with Biosignalsplux. Requires --execute-hardware --use-biosignalsplux.",
+    )
+    parser.add_argument(
         "--use-myo-receiver",
         action="store_true",
         help="Run a short MYO TCP receiver smoke test. Requires --execute-hardware.",
+    )
+    parser.add_argument(
+        "--run-myo-protocol",
+        action="store_true",
+        help="Run MYO-only full protocol acquisition with the TCP receiver. Requires --execute-hardware --use-myo-receiver.",
     )
     parser.add_argument(
         "--myo-receiver-sec",
@@ -419,6 +1036,21 @@ def main() -> int:
         "--run-protocol-markers",
         action="store_true",
         help="Run the full protocol and insert markers into MindRove. Requires --execute-hardware --use-mindrove.",
+    )
+    parser.add_argument(
+        "--run-eeg-protocol",
+        action="store_true",
+        help="Run EEG-only full protocol acquisition with MindRove. Requires --execute-hardware --use-mindrove.",
+    )
+    parser.add_argument(
+        "--run-eeg-myo-protocol",
+        action="store_true",
+        help="Run EEG+MYO full protocol acquisition. Requires --execute-hardware --use-mindrove --use-myo-receiver.",
+    )
+    parser.add_argument(
+        "--run-multimodal-protocol",
+        action="store_true",
+        help="Run EEG+sEMG+MYO full protocol acquisition. Requires --execute-hardware and all device flags.",
     )
     parser.add_argument(
         "--protocol-time-scale",
@@ -522,9 +1154,73 @@ def main() -> int:
         print("Use --use-mindrove, --use-biosignalsplux, or --use-myo-receiver to run a smoke test.")
         return 2
 
+    if args.run_multimodal_protocol:
+        required_flags = (
+            args.use_mindrove
+            and args.use_biosignalsplux
+            and args.use_myo_receiver
+        )
+
+        if not required_flags:
+            print("")
+            print("Multimodal protocol requires:")
+            print("--execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol")
+            return 2
+
+        try:
+            multimodal_result = run_multimodal_protocol_acquisition(
+                device_config=device_config,
+                output_files=output_files,
+                movement_block=session_config.movement_block,
+                total_trials=session_config.total_trials,
+                seed=args.seed,
+                time_scale=args.protocol_time_scale,
+                myo_port_override=args.myo_receiver_port,
+            )
+
+            metadata.update(multimodal_result)
+            save_metadata_json(metadata, output_files["metadata"])
+            print("")
+            print(f"Metadata saved to: {output_files['metadata']}")
+            print("")
+            print("Selected hardware block execution completed.")
+
+            return 0
+
+        except MindRoveDependencyError as exc:
+            print("")
+            print("MindRove block could not run.")
+            print(str(exc))
+            return 3
+
+        except BiosignalspluxDependencyError as exc:
+            print("")
+            print("Biosignalsplux block could not run.")
+            print(str(exc))
+            return 4
+
     if args.use_mindrove:
         try:
-            if args.run_protocol_markers:
+            if args.run_eeg_myo_protocol:
+                mindrove_result = run_mindrove_myo_protocol_acquisition(
+                    device_config=device_config,
+                    output_files=output_files,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                    myo_port_override=args.myo_receiver_port,
+                )
+            elif args.run_eeg_protocol:
+                mindrove_result = run_mindrove_eeg_protocol_acquisition(
+                    device_config=device_config,
+                    output_files=output_files,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                )
+            elif args.run_protocol_markers:
                 mindrove_result = run_mindrove_protocol_marker_test(
                     device_config=device_config,
                     movement_block=session_config.movement_block,
@@ -542,6 +1238,11 @@ def main() -> int:
 
             metadata.update(mindrove_result)
 
+            if args.run_eeg_protocol or args.run_eeg_myo_protocol:
+                save_metadata_json(metadata, output_files["metadata"])
+                print("")
+                print(f"Metadata saved to: {output_files['metadata']}")
+
         except MindRoveDependencyError as exc:
             print("")
             print("MindRove block could not run.")
@@ -550,24 +1251,57 @@ def main() -> int:
 
     if args.use_biosignalsplux:
         try:
-            biosignalsplux_result = run_biosignalsplux_smoke_test(
-                device_config=device_config,
-            )
+            if args.run_semg_protocol:
+                biosignalsplux_result = run_biosignalsplux_semg_protocol_acquisition(
+                    device_config=device_config,
+                    output_files=output_files,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                )
+            else:
+                biosignalsplux_result = run_biosignalsplux_smoke_test(
+                    device_config=device_config,
+                )
+
             metadata.update(biosignalsplux_result)
+
+            if args.run_semg_protocol:
+                save_metadata_json(metadata, output_files["metadata"])
+                print("")
+                print(f"Metadata saved to: {output_files['metadata']}")
 
         except BiosignalspluxDependencyError as exc:
             print("")
-            print("Biosignalsplux smoke test could not run.")
+            print("Biosignalsplux block could not run.")
             print(str(exc))
             return 4
 
-    if args.use_myo_receiver:
-        myo_result = run_myo_receiver_smoke_test(
-            device_config=device_config,
-            duration_sec=args.myo_receiver_sec,
-            port_override=args.myo_receiver_port,
-        )
+    if args.use_myo_receiver and not args.run_eeg_myo_protocol:
+        if args.run_myo_protocol:
+            myo_result = run_myo_protocol_acquisition(
+                device_config=device_config,
+                output_files=output_files,
+                movement_block=session_config.movement_block,
+                total_trials=session_config.total_trials,
+                seed=args.seed,
+                time_scale=args.protocol_time_scale,
+                port_override=args.myo_receiver_port,
+            )
+        else:
+            myo_result = run_myo_receiver_smoke_test(
+                device_config=device_config,
+                duration_sec=args.myo_receiver_sec,
+                port_override=args.myo_receiver_port,
+            )
+
         metadata.update(myo_result)
+
+        if args.run_myo_protocol:
+            save_metadata_json(metadata, output_files["metadata"])
+            print("")
+            print(f"Metadata saved to: {output_files['metadata']}")
 
     print("")
     print("Selected hardware block execution completed.")
