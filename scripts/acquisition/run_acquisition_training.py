@@ -47,14 +47,15 @@ from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
-from motor_intention.acquisition.storage import save_metadata_json
+from motor_intention.acquisition.storage import save_events_csv, save_metadata_json
+from motor_intention.communication.tcp_myo import MyoReceiverConfig, MyoTCPReceiver
 from motor_intention.protocols.event_markers import (
     MANUAL_STOP_MARKER,
     START_PROTOCOL_MARKER,
 )
-from motor_intention.protocols.trial_protocol import (
-    build_trial_list,
-    estimate_protocol_duration_sec,
+from motor_intention.acquisition.protocol_runner import (
+    ProtocolRunner,
+    ProtocolRunnerConfig,
 )
 
 
@@ -105,6 +106,56 @@ def print_acquisition_plan(plan: Dict[str, object]) -> None:
 
     for key, value in output_files.items():
         print(f"  {key}: {value}")
+
+
+def run_myo_receiver_smoke_test(
+    device_config: AcquisitionDeviceConfig,
+    duration_sec: float,
+    port_override: int | None = None,
+) -> Dict[str, object]:
+    """Run a short MYO TCP receiver smoke test.
+
+    This smoke test starts the TCP receiver briefly and then closes it safely.
+    It does not require the real MYO Armband.
+    """
+    print("")
+    print("MYO TCP receiver smoke test")
+    print("---------------------------")
+
+    receiver_port = (
+        port_override
+        if port_override is not None
+        else device_config.myo.receiver_port
+    )
+
+    receiver_config = MyoReceiverConfig(
+        host=device_config.myo.receiver_host,
+        port=receiver_port,
+    )
+
+    receiver = MyoTCPReceiver(config=receiver_config)
+
+    print(f"Starting MYO TCP receiver at {receiver_config.host}:{receiver_config.port}")
+    receiver.start()
+
+    try:
+        time.sleep(duration_sec)
+        messages = receiver.get_messages()
+
+        print(f"Receiver duration: {duration_sec} s")
+        print(f"Received messages: {len(messages)}")
+
+        return {
+            "myo_receiver_smoke_test": "completed",
+            "myo_receiver_host": receiver_config.host,
+            "myo_receiver_port": receiver_config.port,
+            "myo_receiver_duration_sec": duration_sec,
+            "myo_receiver_messages": len(messages),
+        }
+
+    finally:
+        print("Stopping MYO TCP receiver...")
+        receiver.stop()
 
 
 def run_biosignalsplux_smoke_test(
@@ -244,6 +295,11 @@ def main() -> int:
         help="Write a metadata preview JSON file without acquiring real data.",
     )
     parser.add_argument(
+        "--write-events-preview",
+        action="store_true",
+        help="Write a protocol events preview CSV file without acquiring real data.",
+    )
+    parser.add_argument(
         "--execute-hardware",
         action="store_true",
         help="Execute explicitly selected hardware blocks.",
@@ -257,6 +313,23 @@ def main() -> int:
         "--use-biosignalsplux",
         action="store_true",
         help="Run a short Biosignalsplux sEMG smoke test. Requires --execute-hardware.",
+    )
+    parser.add_argument(
+        "--use-myo-receiver",
+        action="store_true",
+        help="Run a short MYO TCP receiver smoke test. Requires --execute-hardware.",
+    )
+    parser.add_argument(
+        "--myo-receiver-sec",
+        type=float,
+        default=1.0,
+        help="MYO TCP receiver smoke test duration in seconds.",
+    )
+    parser.add_argument(
+        "--myo-receiver-port",
+        type=int,
+        default=None,
+        help="Optional temporary MYO receiver port override for testing.",
     )
     parser.add_argument(
         "--mindrove-preview-points",
@@ -292,13 +365,19 @@ def main() -> int:
         output_root=PROJECT_ROOT / device_config.output_root,
     )
 
-    trial_list = build_trial_list(
-        movement_block=session_config.movement_block,
-        total_trials=session_config.total_trials,
-        seed=args.seed,
+    protocol_runner = ProtocolRunner(
+        config=ProtocolRunnerConfig(
+            movement_block=session_config.movement_block,
+            total_trials=session_config.total_trials,
+            seed=args.seed,
+            realtime=False,
+        )
     )
 
-    duration_sec = estimate_protocol_duration_sec(session_config.total_trials)
+    protocol_result = protocol_runner.run()
+    trial_list = protocol_result.trial_list
+    event_rows = protocol_result.events
+    duration_sec = protocol_result.estimated_duration_sec
 
     plan = build_acquisition_plan(
         session_config=session_config,
@@ -318,11 +397,12 @@ def main() -> int:
             else "dry_run_plan",
             "trial_list": trial_list,
             "estimated_duration_sec": duration_sec,
+            "protocol_event_count": len(event_rows),
             "device_config": device_config.to_dict(),
             "selected_hardware_blocks": {
                 "mindrove": args.use_mindrove,
                 "biosignalsplux": args.use_biosignalsplux,
-                "myo_tcp_receiver": False,
+                "myo_tcp_receiver": args.use_myo_receiver,
             },
             "notes": (
                 "This metadata preview does not contain real acquired data. "
@@ -337,15 +417,26 @@ def main() -> int:
         print("")
         print(f"Metadata preview saved to: {metadata_path}")
 
+    if args.write_events_preview:
+        events_path = output_files["events"]
+        save_events_csv(event_rows, events_path)
+        print("")
+        print(f"Events preview saved to: {events_path}")
+
     if not args.execute_hardware:
         print("")
         print("Dry run completed. No real hardware was initialized.")
         return 0
 
-    if args.execute_hardware and not args.use_mindrove and not args.use_biosignalsplux:
+    if (
+        args.execute_hardware
+        and not args.use_mindrove
+        and not args.use_biosignalsplux
+        and not args.use_myo_receiver
+    ):
         print("")
         print("Hardware execution was requested, but no hardware block was selected.")
-        print("Use --use-mindrove or --use-biosignalsplux to run a smoke test.")
+        print("Use --use-mindrove, --use-biosignalsplux, or --use-myo-receiver to run a smoke test.")
         return 2
 
     if args.use_mindrove:
@@ -375,6 +466,14 @@ def main() -> int:
             print("Biosignalsplux smoke test could not run.")
             print(str(exc))
             return 4
+
+    if args.use_myo_receiver:
+        myo_result = run_myo_receiver_smoke_test(
+            device_config=device_config,
+            duration_sec=args.myo_receiver_sec,
+            port_override=args.myo_receiver_port,
+        )
+        metadata.update(myo_result)
 
     print("")
     print("Selected hardware block execution completed.")

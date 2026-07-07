@@ -113,3 +113,43 @@ python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --se
 The current smoke test validates that the Biosignalsplux API can be imported and that a device class can be created from the public configuration.
 
 Full sEMG streaming will be added after validating the hardware-specific API behavior on the acquisition computer.
+
+## MYO TCP receiver smoke test
+
+The entry point also includes an optional MYO TCP receiver smoke test.
+
+It is disabled by default and only runs when both flags are used:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver
+~~~
+
+For local testing, a temporary port can be selected:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --myo-receiver-port 9997
+~~~
+
+The smoke test starts the TCP receiver briefly and then closes it safely. It does not require the real MYO Armband.
+
+## Protocol events preview
+
+The real acquisition entry point now uses the clean protocol runner module:
+
+~~~text
+src/motor_intention/acquisition/protocol_runner.py
+~~~
+
+A protocol events preview can be generated without hardware using:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --write-events-preview
+~~~
+
+This writes a synthetic protocol events CSV under:
+
+~~~text
+outputs/acquisition/
+~~~
+
+This preview is useful for validating trial order, phase timing, and event markers before connecting real hardware.
