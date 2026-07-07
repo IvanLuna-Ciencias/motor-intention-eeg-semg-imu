@@ -12,6 +12,7 @@ They include:
 src/motor_intention/protocols/event_markers.py
 src/motor_intention/protocols/trial_protocol.py
 src/motor_intention/acquisition/storage.py
+src/motor_intention/communication/tcp_myo.py
 scripts/acquisition/create_synthetic_acquisition_sample.py
 ~~~
 
@@ -58,7 +59,7 @@ pytest
 Expected result:
 
 ~~~text
-9 passed
+11 passed
 ~~~
 
 ## Current scope
@@ -96,3 +97,13 @@ They will be migrated later after removing:
 - Hardcoded IP addresses.
 - Participant-identifiable fields.
 - Mixed acquisition/classification/robot-control logic.
+
+## MYO sender script check
+
+The public MYO sender entry point can be checked without hardware by running:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py --help
+~~~
+
+This command should display the script options without connecting to the MYO Armband.

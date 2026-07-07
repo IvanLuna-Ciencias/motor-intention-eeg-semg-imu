@@ -151,3 +151,27 @@ docs/myo_bridge.md
 ~~~
 
 The MYO sender script should read hardware-specific settings from configuration files or environment variables instead of hardcoded local paths.
+
+## Public synthetic sender
+
+A public synthetic MYO sender entry point is available at:
+
+~~~text
+scripts/acquisition/run_myo_sender.py
+~~~
+
+This script currently supports synthetic mode only. It can be used to test the TCP bridge without the MYO Armband or MYO SDK.
+
+The example configuration file is:
+
+~~~text
+configs/acquisition/myo_sender.example.yaml
+~~~
+
+To show the command-line options, run:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py --help
+~~~
+
+Real MYO SDK support will be added later after cleaning the legacy sender code.
