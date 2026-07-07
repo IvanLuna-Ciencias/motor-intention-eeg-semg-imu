@@ -1,0 +1,188 @@
+﻿# Testing checklist
+
+This document summarizes basic checks for the public repository.
+
+## Acquisition modules
+
+The acquisition-related modules currently included in the public repository are hardware-independent.
+
+They include:
+
+~~~text
+src/motor_intention/protocols/event_markers.py
+src/motor_intention/protocols/trial_protocol.py
+src/motor_intention/acquisition/storage.py
+src/motor_intention/communication/tcp_myo.py
+scripts/acquisition/create_synthetic_acquisition_sample.py
+~~~
+
+## Synthetic acquisition sample
+
+To generate synthetic EEG, sEMG, MYO, event, and metadata files, run:
+
+~~~bash
+python scripts/acquisition/create_synthetic_acquisition_sample.py
+~~~
+
+The generated files are stored in:
+
+~~~text
+data/sample/
+~~~
+
+Expected files:
+
+~~~text
+synthetic_eeg.csv
+synthetic_semg_biosignals.csv
+synthetic_myo.csv
+synthetic_events.csv
+example_metadata.json
+~~~
+
+These files are synthetic only and do not contain real participant data.
+
+## Running tests
+
+Install development dependencies:
+
+~~~bash
+pip install -r requirements-dev.txt
+~~~
+
+Run tests:
+
+~~~bash
+pytest
+~~~
+
+Expected result:
+
+~~~text
+11 passed
+~~~
+
+## Current scope
+
+The current tests verify:
+
+- Experimental event markers.
+- Movement block definitions.
+- Randomized balanced trial generation.
+- Protocol start and stop events.
+- Protocol duration estimation.
+- EEG CSV saving.
+- sEMG CSV saving.
+- MYO CSV saving.
+- Event CSV saving.
+- Metadata JSON saving.
+
+## Hardware-dependent scripts
+
+The following legacy scripts are not yet part of the public package:
+
+~~~text
+myo_sender.py
+myo_receiver.py
+main_acquisition.py
+main_acquisition_LV.py
+main_acquisition_LV_FINALES.py
+~~~
+
+They will be migrated later after removing:
+
+- Local paths.
+- Private model paths.
+- Device-specific SDK paths.
+- Hardcoded IP addresses.
+- Participant-identifiable fields.
+- Mixed acquisition/classification/robot-control logic.
+
+## MYO sender script check
+
+The public MYO sender entry point can be checked without hardware by running:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py --help
+~~~
+
+This command should display the script options without connecting to the MYO Armband.
+
+## Manual MYO bridge test
+
+The MYO TCP bridge can be tested without hardware using:
+
+~~~bash
+python scripts/acquisition/run_myo_receiver_demo.py
+~~~
+
+and, in a second terminal:
+
+~~~bash
+python scripts/acquisition/run_myo_sender.py
+~~~
+
+The generated file `data/sample/synthetic_myo_from_tcp.csv` is a local test artifact and should not be committed.
+
+## Acquisition configuration checks
+
+The repository includes public-safe acquisition configuration utilities:
+
+~~~text
+src/motor_intention/acquisition/session_config.py
+src/motor_intention/acquisition/device_config.py
+configs/acquisition/acquisition.example.yaml
+configs/acquisition/myo_sender.example.yaml
+~~~
+
+These modules define anonymized session configuration and hardware/communication settings without hardcoded private paths.
+
+The example configuration files should be copied locally and adapted to each hardware setup. Private paths, participant data, and private IP addresses should not be committed.
+
+The tests also verify:
+
+- Session filename generation.
+- Public-safe metadata creation.
+- Output filename construction.
+- Device configuration validation.
+- YAML configuration loading and saving.
+
+## Complete synthetic acquisition demo
+
+A complete synthetic acquisition demo is available at:
+
+~~~text
+scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+Run it with:
+
+~~~bash
+python scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+The script generates synthetic EEG, sEMG, MYO, event, and metadata files under:
+
+~~~text
+outputs/acquisition/
+~~~
+
+The `outputs/` folder is ignored by Git and should not be committed.
+
+## Hardware wrapper checks
+
+The repository includes dependency-safe hardware wrappers for:
+
+~~~text
+src/motor_intention/acquisition/mindrove.py
+src/motor_intention/acquisition/biosignalsplux.py
+src/motor_intention/communication/tcp_myo.py
+~~~
+
+These wrappers are designed to be importable and testable without requiring physical hardware.
+
+Additional documentation:
+
+~~~text
+docs/acquisition_hardware_wrappers.md
+~~~

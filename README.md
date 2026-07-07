@@ -313,3 +313,92 @@ This project is licensed under the MIT License. See [`LICENSE`](LICENSE) for det
 Iván Alberto Luna Hernández  
 Master's research project in Bioengineering  
 Upper-limb motor intention detection, biomedical signal processing, and assistive robotics.
+
+## Public acquisition layer
+
+This repository includes a public acquisition layer extracted and cleaned from the original thesis acquisition scripts.
+
+The goal of this layer is to provide a modular, testable, and public-safe structure for multimodal acquisition without exposing private participant data, local hardware paths, private IP addresses, or raw experimental recordings.
+
+### Included acquisition components
+
+The current public acquisition layer includes:
+
+~~~text
+src/motor_intention/protocols/event_markers.py
+src/motor_intention/protocols/trial_protocol.py
+src/motor_intention/acquisition/storage.py
+src/motor_intention/acquisition/session_config.py
+src/motor_intention/acquisition/device_config.py
+src/motor_intention/acquisition/mindrove.py
+src/motor_intention/acquisition/biosignalsplux.py
+src/motor_intention/communication/tcp_myo.py
+~~~
+
+### Synthetic acquisition demo
+
+A complete synthetic acquisition demo is available at:
+
+~~~text
+scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+Run it with:
+
+~~~bash
+python scripts/acquisition/run_synthetic_acquisition_demo.py
+~~~
+
+The demo generates synthetic EEG, sEMG, MYO, event, and metadata files under:
+
+~~~text
+outputs/acquisition/
+~~~
+
+The generated files are synthetic only and should not be committed.
+
+### MYO TCP bridge
+
+The repository includes a clean MYO TCP bridge that can be tested without hardware using:
+
+~~~text
+scripts/acquisition/run_myo_receiver_demo.py
+scripts/acquisition/run_myo_sender.py
+~~~
+
+This supports synthetic JSON-lines messages and separates the MYO SDK process from the main acquisition workflow.
+
+### Hardware wrappers
+
+Dependency-safe wrappers are included for:
+
+~~~text
+MindRove EEG
+Biosignalsplux sEMG
+MYO TCP bridge
+~~~
+
+These wrappers are designed so the repository remains importable and testable even when hardware-specific dependencies are not installed.
+
+### Configuration files
+
+Public-safe example configuration files are provided in:
+
+~~~text
+configs/acquisition/acquisition.example.yaml
+configs/acquisition/myo_sender.example.yaml
+~~~
+
+Private hardware paths, participant information, private IP addresses, and real recordings should be kept in local configuration files and should not be committed.
+
+### Acquisition documentation
+
+Additional documentation is available in:
+
+~~~text
+docs/acquisition_software_audit.md
+docs/acquisition_hardware_wrappers.md
+docs/myo_bridge.md
+docs/synthetic_acquisition_demo.md
+docs/testing_checklist.md
+~~~

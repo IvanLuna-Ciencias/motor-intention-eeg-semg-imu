@@ -1,0 +1,10 @@
+{
+  "subject_id": "sub-synthetic001",
+  "session_id": "ses-01",
+  "movement_block": "Codo",
+  "eeg_sampling_hz": 500.0,
+  "semg_sampling_hz": 1000.0,
+  "myo_emg_sampling_hz": 200.0,
+  "myo_imu_sampling_hz": 50.0,
+  "notes": "Synthetic example only. No real participant data."
+}
