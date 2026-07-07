@@ -214,3 +214,31 @@ This mode:
 - Closes the MindRove session safely.
 
 The protocol runner controls timing and markers, but the acquisition stream is managed explicitly by the acquisition entry point.
+
+## sEMG-only full protocol acquisition
+
+The entry point now includes a protected sEMG-only full protocol acquisition mode using Biosignalsplux.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux --run-semg-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-biosignalsplux --run-semg-protocol --protocol-time-scale 0.1
+~~~
+
+This mode:
+
+- Starts Biosignalsplux sEMG acquisition before the protocol.
+- Keeps sEMG acquisition active while the protocol runs.
+- Records protocol events using `ProtocolEventRecorder`.
+- Stops sEMG acquisition explicitly after the protocol.
+- Retrieves available sEMG data.
+- Saves sEMG data, events, and metadata.
+- Closes Biosignalsplux resources safely.
+
+The protocol runner controls timing and events, but the acquisition lifetime is managed explicitly by the acquisition entry point.

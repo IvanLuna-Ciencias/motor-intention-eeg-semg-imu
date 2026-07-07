@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Dict, List
@@ -53,7 +54,7 @@ from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
-from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json
+from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json, save_semg_csv
 from motor_intention.communication.tcp_myo import MyoReceiverConfig, MyoTCPReceiver
 from motor_intention.protocols.event_markers import (
     MANUAL_STOP_MARKER,
@@ -162,6 +163,116 @@ def run_myo_receiver_smoke_test(
     finally:
         print("Stopping MYO TCP receiver...")
         receiver.stop()
+
+
+def run_biosignalsplux_semg_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+) -> Dict[str, object]:
+    """Run sEMG-only full protocol acquisition using Biosignalsplux.
+
+    Acquisition is started before the protocol and stopped explicitly after the
+    protocol finishes or after a safe interruption.
+    """
+    print("")
+    print("Biosignalsplux sEMG-only protocol acquisition")
+    print("---------------------------------------------")
+
+    device_class = create_biosignalsplux_device_class(
+        config=device_config.biosignalsplux,
+    )
+    device = device_class()
+    recorder = ProtocolEventRecorder()
+    acquisition_errors = []
+
+    def acquisition_target():
+        try:
+            device.start_acquisition()
+        except Exception as exc:
+            acquisition_errors.append(exc)
+
+    acquisition_thread = threading.Thread(
+        target=acquisition_target,
+        name="BiosignalspluxAcquisitionThread",
+        daemon=True,
+    )
+
+    try:
+        print("Starting continuous sEMG acquisition...")
+        acquisition_thread.start()
+
+        time.sleep(0.5)
+
+        if acquisition_errors:
+            raise acquisition_errors[0]
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Stopping sEMG acquisition explicitly...")
+        device.stop_acquisition()
+        acquisition_thread.join(timeout=2.0)
+
+        semg_data = device.get_all_data()
+
+        semg_path = save_semg_csv(
+            semg_data,
+            output_files["semg"],
+            sampling_rate_hz=device_config.biosignalsplux.sampling_rate_hz,
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"sEMG data shape:  {semg_data.shape}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"sEMG saved to:    {semg_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "biosignalsplux_semg_protocol_acquisition": "completed",
+            "biosignalsplux_sampling_rate_hz": (
+                device_config.biosignalsplux.sampling_rate_hz
+            ),
+            "biosignalsplux_semg_shape": list(semg_data.shape),
+            "biosignalsplux_protocol_event_count": len(result.events),
+            "protocol_time_scale": time_scale,
+            "semg_output_file": str(semg_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Closing Biosignalsplux resources...")
+        try:
+            device.stop_acquisition()
+        except Exception:
+            pass
+
+        try:
+            acquisition_thread.join(timeout=2.0)
+        except RuntimeError:
+            pass
+
+        try:
+            device.close_resources()
+        except Exception:
+            pass
 
 
 def run_biosignalsplux_smoke_test(
@@ -498,6 +609,11 @@ def main() -> int:
         help="Run a short Biosignalsplux sEMG smoke test. Requires --execute-hardware.",
     )
     parser.add_argument(
+        "--run-semg-protocol",
+        action="store_true",
+        help="Run sEMG-only full protocol acquisition with Biosignalsplux. Requires --execute-hardware --use-biosignalsplux.",
+    )
+    parser.add_argument(
         "--use-myo-receiver",
         action="store_true",
         help="Run a short MYO TCP receiver smoke test. Requires --execute-hardware.",
@@ -680,14 +796,30 @@ def main() -> int:
 
     if args.use_biosignalsplux:
         try:
-            biosignalsplux_result = run_biosignalsplux_smoke_test(
-                device_config=device_config,
-            )
+            if args.run_semg_protocol:
+                biosignalsplux_result = run_biosignalsplux_semg_protocol_acquisition(
+                    device_config=device_config,
+                    output_files=output_files,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                )
+            else:
+                biosignalsplux_result = run_biosignalsplux_smoke_test(
+                    device_config=device_config,
+                )
+
             metadata.update(biosignalsplux_result)
+
+            if args.run_semg_protocol:
+                save_metadata_json(metadata, output_files["metadata"])
+                print("")
+                print(f"Metadata saved to: {output_files['metadata']}")
 
         except BiosignalspluxDependencyError as exc:
             print("")
-            print("Biosignalsplux smoke test could not run.")
+            print("Biosignalsplux block could not run.")
             print(str(exc))
             return 4
 
