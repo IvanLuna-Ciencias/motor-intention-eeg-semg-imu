@@ -123,3 +123,26 @@ python scripts/acquisition/run_myo_sender.py
 ~~~
 
 The generated file `data/sample/synthetic_myo_from_tcp.csv` is a local test artifact and should not be committed.
+
+## Acquisition configuration checks
+
+The repository includes public-safe acquisition configuration utilities:
+
+~~~text
+src/motor_intention/acquisition/session_config.py
+src/motor_intention/acquisition/device_config.py
+configs/acquisition/acquisition.example.yaml
+configs/acquisition/myo_sender.example.yaml
+~~~
+
+These modules define anonymized session configuration and hardware/communication settings without hardcoded private paths.
+
+The example configuration files should be copied locally and adapted to each hardware setup. Private paths, participant data, and private IP addresses should not be committed.
+
+The tests also verify:
+
+- Session filename generation.
+- Public-safe metadata creation.
+- Output filename construction.
+- Device configuration validation.
+- YAML configuration loading and saving.
