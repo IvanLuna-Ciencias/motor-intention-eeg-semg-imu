@@ -35,6 +35,10 @@ from motor_intention.acquisition.device_config import (
     AcquisitionDeviceConfig,
     load_acquisition_device_config,
 )
+from motor_intention.acquisition.event_callbacks import (
+    DeviceMarkerCallback,
+    ProtocolEventRecorder,
+)
 from motor_intention.acquisition.biosignalsplux import (
     BiosignalspluxDependencyError,
     create_biosignalsplux_device_class,
@@ -195,6 +199,74 @@ def run_biosignalsplux_smoke_test(
     }
 
 
+def run_mindrove_protocol_marker_test(
+    device_config: AcquisitionDeviceConfig,
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+    preview_points: int,
+) -> Dict[str, object]:
+    """Run the full protocol while inserting markers into MindRove.
+
+    This is still a marker/acquisition-structure validation step. It starts the
+    EEG stream, runs the timed protocol, forwards every protocol marker to
+    MindRove, reads a short EEG preview, and closes the session safely.
+    """
+    print("")
+    print("MindRove protocol marker test")
+    print("-----------------------------")
+
+    device = MindRoveEEGDevice(config=device_config.mindrove)
+    recorder = ProtocolEventRecorder()
+    marker_callback = DeviceMarkerCallback(device=device)
+
+    try:
+        print("Preparing MindRove session...")
+        device.prepare()
+
+        sampling_rate_hz = device.get_sampling_rate_hz()
+        eeg_channels = device.get_eeg_channels()
+
+        print(f"Sampling rate: {sampling_rate_hz} Hz")
+        print(f"EEG channels:  {eeg_channels}")
+
+        print("Starting EEG stream...")
+        device.start_stream()
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder, marker_callback],
+        )
+
+        result = runner.run()
+        preview_data = device.get_current_data(preview_points)
+
+        print(f"Protocol events:   {len(result.events)}")
+        print(f"Inserted markers:  {len(marker_callback.inserted_markers)}")
+        print(f"Preview data shape: {preview_data.shape}")
+
+        return {
+            "mindrove_protocol_marker_test": "completed",
+            "mindrove_sampling_rate_hz": sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_protocol_event_count": len(result.events),
+            "mindrove_inserted_marker_count": len(marker_callback.inserted_markers),
+            "mindrove_preview_shape": list(preview_data.shape),
+            "protocol_time_scale": time_scale,
+        }
+
+    finally:
+        print("Closing MindRove session...")
+        device.close()
+
+
 def run_mindrove_smoke_test(
     device_config: AcquisitionDeviceConfig,
     n_points: int,
@@ -343,6 +415,17 @@ def main() -> int:
         default=1.0,
         help="MindRove smoke test stream duration in seconds.",
     )
+    parser.add_argument(
+        "--run-protocol-markers",
+        action="store_true",
+        help="Run the full protocol and insert markers into MindRove. Requires --execute-hardware --use-mindrove.",
+    )
+    parser.add_argument(
+        "--protocol-time-scale",
+        type=float,
+        default=1.0,
+        help="Time scale for realtime protocol marker execution.",
+    )
 
     args = parser.parse_args()
 
@@ -441,16 +524,27 @@ def main() -> int:
 
     if args.use_mindrove:
         try:
-            mindrove_result = run_mindrove_smoke_test(
-                device_config=device_config,
-                n_points=args.mindrove_preview_points,
-                stream_duration_sec=args.mindrove_stream_sec,
-            )
+            if args.run_protocol_markers:
+                mindrove_result = run_mindrove_protocol_marker_test(
+                    device_config=device_config,
+                    movement_block=session_config.movement_block,
+                    total_trials=session_config.total_trials,
+                    seed=args.seed,
+                    time_scale=args.protocol_time_scale,
+                    preview_points=args.mindrove_preview_points,
+                )
+            else:
+                mindrove_result = run_mindrove_smoke_test(
+                    device_config=device_config,
+                    n_points=args.mindrove_preview_points,
+                    stream_duration_sec=args.mindrove_stream_sec,
+                )
+
             metadata.update(mindrove_result)
 
         except MindRoveDependencyError as exc:
             print("")
-            print("MindRove smoke test could not run.")
+            print("MindRove block could not run.")
             print(str(exc))
             return 3
 

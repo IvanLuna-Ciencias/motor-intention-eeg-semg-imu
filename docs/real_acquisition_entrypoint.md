@@ -153,3 +153,37 @@ outputs/acquisition/
 ~~~
 
 This preview is useful for validating trial order, phase timing, and event markers before connecting real hardware.
+
+## MindRove full protocol marker test
+
+The entry point can now run the timed protocol and forward every protocol marker to MindRove.
+
+This mode is disabled by default and requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-protocol-markers
+~~~
+
+For shorter local validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-protocol-markers --protocol-time-scale 0.1
+~~~
+
+This mode uses:
+
+~~~text
+ProtocolRunner
+ProtocolEventRecorder
+DeviceMarkerCallback
+MindRoveEEGDevice
+~~~
+
+Current purpose:
+
+- Validate full protocol timing.
+- Insert protocol markers into the EEG stream.
+- Confirm that the marker callback layer works with MindRove.
+- Keep acquisition and event logic separated.
+
+This is not yet the full multimodal acquisition protocol.
