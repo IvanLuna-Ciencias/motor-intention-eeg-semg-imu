@@ -298,3 +298,34 @@ Result:
 Design note:
 
 The MYO sender remains a separate process by design. This preserves compatibility with the original architecture, where the MYO SDK sender may require a separate Python environment.
+
+## EEG+MYO full protocol acquisition mode
+
+The acquisition entry point now includes a protected EEG+MYO full protocol acquisition mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-myo-receiver --run-eeg-myo-protocol
+~~~
+
+Current status:
+
+- Starts the MYO TCP receiver before the protocol.
+- Starts MindRove EEG streaming before the protocol.
+- Runs the timed protocol using `ProtocolRunner`.
+- Inserts protocol markers into the EEG stream using `DeviceMarkerCallback`.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG data and MYO messages after protocol completion.
+- Saves EEG, MYO, events, and metadata files.
+- Closes MindRove and the MYO receiver safely.
+
+Design note:
+
+The MYO sender remains a separate process by design. This preserves compatibility with the original architecture where the MYO SDK sender may require a separate Python environment.
+
+Pending validation:
+
+- Test with the real MindRove device.
+- Test with the synthetic MYO sender while MindRove is active.
+- Test with the real MYO SDK sender.
+- Validate EEG marker timing against the exported events CSV.
+- Validate synchronization between EEG and MYO timestamps.

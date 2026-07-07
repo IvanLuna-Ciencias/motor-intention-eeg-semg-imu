@@ -269,3 +269,32 @@ This mode:
 - Stops the MYO receiver safely.
 
 The receiver can be tested with the synthetic MYO sender or with the real MYO SDK sender.
+
+## EEG+MYO full protocol acquisition
+
+The entry point now includes a protected EEG+MYO full protocol acquisition mode.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-myo-receiver --run-eeg-myo-protocol
+~~~
+
+For local validation with the MYO synthetic sender, use a temporary MYO receiver port:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-myo-receiver --run-eeg-myo-protocol --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts MindRove EEG streaming before the protocol.
+- Starts the MYO TCP receiver before the protocol.
+- Keeps both acquisition streams active while the protocol runs.
+- Inserts protocol markers into the EEG stream.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG data and MYO messages after the protocol finishes.
+- Saves EEG, MYO, events, and metadata.
+- Closes MindRove and the MYO receiver safely.
+
+The MYO sender remains a separate process by design.
