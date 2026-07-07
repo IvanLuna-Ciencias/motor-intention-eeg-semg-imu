@@ -70,3 +70,32 @@ This script should not include:
 - Local SDK paths.
 - Raw recordings.
 - Private trained model paths.
+
+## MindRove smoke test
+
+The entry point includes an optional MindRove EEG smoke test.
+
+It is disabled by default and only runs when both flags are used:
+
+```bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove
+## MindRove smoke test
+
+The entry point includes an optional MindRove EEG smoke test.
+
+It is disabled by default and only runs when both flags are used:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove
+~~~
+
+The smoke test performs only a short connectivity check:
+
+- Prepare MindRove session.
+- Start EEG stream.
+- Insert START marker.
+- Read a short EEG preview.
+- Insert STOP marker.
+- Close the session.
+
+This is not yet the full experimental acquisition protocol.

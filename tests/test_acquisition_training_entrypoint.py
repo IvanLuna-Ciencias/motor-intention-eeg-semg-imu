@@ -46,3 +46,26 @@ def test_acquisition_training_dry_run_runs():
     assert "Acquisition training plan" in result.stdout
     assert "Dry run completed" in result.stdout
     assert "sub-test001" in result.stdout
+
+def test_acquisition_training_execute_hardware_without_block_returns_2():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT_PATH),
+            "--subject-id",
+            "sub-test001",
+            "--session-id",
+            "ses-01",
+            "--movement-block",
+            "Codo",
+            "--total-trials",
+            "4",
+            "--execute-hardware",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "no hardware block was selected" in result.stdout

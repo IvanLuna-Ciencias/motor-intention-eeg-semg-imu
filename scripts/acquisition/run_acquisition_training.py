@@ -10,15 +10,17 @@ Current scope:
 - Build standardized output filenames.
 - Generate a dry-run acquisition plan.
 - Optionally write metadata preview.
+- Optionally run a MindRove EEG smoke test when explicitly requested.
 
-Hardware execution will be added progressively after validating each device
-wrapper independently.
+Full hardware protocol execution will be added progressively after validating
+each device wrapper independently.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 from typing import Dict, List
 
@@ -29,12 +31,23 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from motor_intention.acquisition.device_config import load_acquisition_device_config
+from motor_intention.acquisition.device_config import (
+    AcquisitionDeviceConfig,
+    load_acquisition_device_config,
+)
+from motor_intention.acquisition.mindrove import (
+    MindRoveDependencyError,
+    MindRoveEEGDevice,
+)
 from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
 from motor_intention.acquisition.storage import save_metadata_json
+from motor_intention.protocols.event_markers import (
+    MANUAL_STOP_MARKER,
+    START_PROTOCOL_MARKER,
+)
 from motor_intention.protocols.trial_protocol import (
     build_trial_list,
     estimate_protocol_duration_sec,
@@ -90,6 +103,57 @@ def print_acquisition_plan(plan: Dict[str, object]) -> None:
         print(f"  {key}: {value}")
 
 
+def run_mindrove_smoke_test(
+    device_config: AcquisitionDeviceConfig,
+    n_points: int,
+    stream_duration_sec: float,
+) -> Dict[str, object]:
+    """Run a short MindRove EEG smoke test."""
+    print("")
+    print("MindRove EEG smoke test")
+    print("-----------------------")
+
+    device = MindRoveEEGDevice(config=device_config.mindrove)
+
+    try:
+        print("Preparing MindRove session...")
+        device.prepare()
+
+        sampling_rate_hz = device.get_sampling_rate_hz()
+        eeg_channels = device.get_eeg_channels()
+
+        print(f"Sampling rate: {sampling_rate_hz} Hz")
+        print(f"EEG channels:  {eeg_channels}")
+
+        print("Starting EEG stream...")
+        device.start_stream()
+
+        print(f"Inserting START marker: {START_PROTOCOL_MARKER}")
+        device.insert_marker(START_PROTOCOL_MARKER)
+
+        time.sleep(stream_duration_sec)
+
+        preview_data = device.get_current_data(n_points)
+
+        print(f"Inserting STOP marker: {MANUAL_STOP_MARKER}")
+        device.insert_marker(MANUAL_STOP_MARKER)
+
+        print(f"Preview data shape: {preview_data.shape}")
+
+        return {
+            "mindrove_smoke_test": "completed",
+            "mindrove_sampling_rate_hz": sampling_rate_hz,
+            "mindrove_eeg_channels": eeg_channels,
+            "mindrove_preview_shape": list(preview_data.shape),
+            "mindrove_stream_duration_sec": stream_duration_sec,
+            "mindrove_preview_n_points": n_points,
+        }
+
+    finally:
+        print("Closing MindRove session...")
+        device.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run real multimodal acquisition for training data collection."
@@ -141,7 +205,24 @@ def main() -> int:
     parser.add_argument(
         "--execute-hardware",
         action="store_true",
-        help="Execute real hardware acquisition. Not enabled yet in this public skeleton.",
+        help="Execute explicitly selected hardware blocks.",
+    )
+    parser.add_argument(
+        "--use-mindrove",
+        action="store_true",
+        help="Run a short MindRove EEG smoke test. Requires --execute-hardware.",
+    )
+    parser.add_argument(
+        "--mindrove-preview-points",
+        type=int,
+        default=250,
+        help="Number of EEG points to read during MindRove smoke test.",
+    )
+    parser.add_argument(
+        "--mindrove-stream-sec",
+        type=float,
+        default=1.0,
+        help="MindRove smoke test stream duration in seconds.",
     )
 
     args = parser.parse_args()
@@ -186,15 +267,20 @@ def main() -> int:
     metadata.update(
         {
             "entry_point": "scripts/acquisition/run_acquisition_training.py",
-            "mode": "hardware_execution_pending"
+            "mode": "hardware_execution"
             if args.execute_hardware
             else "dry_run_plan",
             "trial_list": trial_list,
             "estimated_duration_sec": duration_sec,
             "device_config": device_config.to_dict(),
+            "selected_hardware_blocks": {
+                "mindrove": args.use_mindrove,
+                "biosignalsplux": False,
+                "myo_tcp_receiver": False,
+            },
             "notes": (
                 "This metadata preview does not contain real acquired data. "
-                "Hardware execution will be added progressively."
+                "Full protocol execution will be added progressively."
             ),
         }
     )
@@ -205,14 +291,34 @@ def main() -> int:
         print("")
         print(f"Metadata preview saved to: {metadata_path}")
 
-    if args.execute_hardware:
+    if not args.execute_hardware:
         print("")
-        print("Hardware execution is not enabled yet in this public skeleton.")
-        print("Next steps will add MindRove, Biosignalsplux, and MYO acquisition blocks.")
+        print("Dry run completed. No real hardware was initialized.")
+        return 0
+
+    if args.execute_hardware and not args.use_mindrove:
+        print("")
+        print("Hardware execution was requested, but no hardware block was selected.")
+        print("Use --use-mindrove to run the MindRove EEG smoke test.")
         return 2
 
+    if args.use_mindrove:
+        try:
+            mindrove_result = run_mindrove_smoke_test(
+                device_config=device_config,
+                n_points=args.mindrove_preview_points,
+                stream_duration_sec=args.mindrove_stream_sec,
+            )
+            metadata.update(mindrove_result)
+
+        except MindRoveDependencyError as exc:
+            print("")
+            print("MindRove smoke test could not run.")
+            print(str(exc))
+            return 3
+
     print("")
-    print("Dry run completed. No real hardware was initialized.")
+    print("Selected hardware block execution completed.")
 
     return 0
 
