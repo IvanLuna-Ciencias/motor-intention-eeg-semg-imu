@@ -329,3 +329,38 @@ Pending validation:
 - Test with the real MYO SDK sender.
 - Validate EEG marker timing against the exported events CSV.
 - Validate synchronization between EEG and MYO timestamps.
+
+## EEG+sEMG+MYO full multimodal protocol acquisition mode
+
+The acquisition entry point now includes a protected full multimodal protocol acquisition mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --use-biosignalsplux --use-myo-receiver --run-multimodal-protocol
+~~~
+
+Current status:
+
+- Starts MindRove EEG streaming before the protocol.
+- Starts Biosignalsplux sEMG acquisition before the protocol.
+- Starts the MYO TCP receiver before the protocol.
+- Runs the timed protocol using `ProtocolRunner`.
+- Inserts protocol markers into the EEG stream using `DeviceMarkerCallback`.
+- Records protocol events using `ProtocolEventRecorder`.
+- Keeps all acquisition streams active while the protocol runs.
+- Retrieves available EEG, sEMG, and MYO data after protocol completion.
+- Saves EEG, sEMG, MYO, events, and metadata files.
+- Closes all hardware resources safely.
+
+Design note:
+
+The protocol controls timing, phase transitions, event labels, and marker insertion. Hardware acquisition lifetimes are managed explicitly by the acquisition entry point.
+
+Pending validation:
+
+- Test with the real MindRove device.
+- Test with the real Biosignalsplux device.
+- Test with the synthetic MYO sender while EEG and sEMG are active.
+- Test with the real MYO SDK sender.
+- Validate saved EEG, sEMG, and MYO file shapes.
+- Validate synchronization between exported events and acquired data.
+- Confirm safe shutdown during manual interruption.
