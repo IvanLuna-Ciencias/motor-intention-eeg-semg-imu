@@ -242,3 +242,33 @@ Pending validation:
 - Verify that saved sEMG shape is correct.
 - Confirm behavior during manual interruption.
 - Validate that the `plux` API loop exits cleanly after `stop_acquisition()`.
+
+## MYO-only full protocol acquisition mode
+
+The acquisition entry point now includes a protected MYO-only full protocol acquisition mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --run-myo-protocol
+~~~
+
+Current status:
+
+- Starts the MYO TCP receiver before the protocol.
+- Runs the timed protocol using `ProtocolRunner`.
+- Records protocol events using `ProtocolEventRecorder`.
+- Keeps the MYO receiver active while the protocol runs.
+- Retrieves available MYO messages after protocol completion.
+- Saves MYO, events, and metadata files.
+- Stops the MYO TCP receiver safely.
+
+Design note:
+
+The protocol controls timing and events, but the MYO receiver lifetime is managed explicitly by the acquisition entry point.
+
+Pending validation:
+
+- Test with the synthetic MYO sender.
+- Test with the real MYO SDK sender.
+- Verify MYO message count and timestamp behavior.
+- Confirm behavior during manual interruption.
+- Validate synchronization between MYO timestamps and protocol events.
