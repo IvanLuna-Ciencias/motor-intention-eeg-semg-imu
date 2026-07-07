@@ -23,6 +23,7 @@ def test_acquisition_training_help_runs():
     assert "--protocol-time-scale" in result.stdout
     assert "--run-eeg-protocol" in result.stdout
     assert "--run-semg-protocol" in result.stdout
+    assert "--run-myo-protocol" in result.stdout
 
 
 def test_acquisition_training_dry_run_runs():

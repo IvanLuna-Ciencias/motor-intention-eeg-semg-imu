@@ -242,3 +242,30 @@ This mode:
 - Closes Biosignalsplux resources safely.
 
 The protocol runner controls timing and events, but the acquisition lifetime is managed explicitly by the acquisition entry point.
+
+## MYO-only full protocol acquisition
+
+The entry point now includes a protected MYO-only full protocol acquisition mode using the TCP receiver.
+
+It requires:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --run-myo-protocol
+~~~
+
+For shorter validation, the realtime protocol can be accelerated:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-myo-receiver --run-myo-protocol --protocol-time-scale 0.1 --myo-receiver-port 9997
+~~~
+
+This mode:
+
+- Starts the MYO TCP receiver before the protocol.
+- Keeps the receiver active while the protocol runs.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available MYO messages after the protocol finishes.
+- Saves MYO messages, events, and metadata.
+- Stops the MYO receiver safely.
+
+The receiver can be tested with the synthetic MYO sender or with the real MYO SDK sender.

@@ -54,7 +54,7 @@ from motor_intention.acquisition.session_config import (
     AcquisitionSessionConfig,
     build_output_filenames,
 )
-from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json, save_semg_csv
+from motor_intention.acquisition.storage import save_eeg_csv, save_events_csv, save_metadata_json, save_myo_csv, save_semg_csv
 from motor_intention.communication.tcp_myo import MyoReceiverConfig, MyoTCPReceiver
 from motor_intention.protocols.event_markers import (
     MANUAL_STOP_MARKER,
@@ -113,6 +113,92 @@ def print_acquisition_plan(plan: Dict[str, object]) -> None:
 
     for key, value in output_files.items():
         print(f"  {key}: {value}")
+
+
+def run_myo_protocol_acquisition(
+    device_config: AcquisitionDeviceConfig,
+    output_files: Dict[str, Path],
+    movement_block: str,
+    total_trials: int,
+    seed: int,
+    time_scale: float,
+    port_override: int | None = None,
+) -> Dict[str, object]:
+    """Run MYO-only full protocol acquisition using the TCP receiver.
+
+    The TCP receiver is started before the protocol and stopped explicitly after
+    the protocol finishes. It can receive messages from the synthetic sender or
+    from the real MYO SDK sender.
+    """
+    print("")
+    print("MYO-only protocol acquisition")
+    print("-----------------------------")
+
+    receiver_port = (
+        port_override
+        if port_override is not None
+        else device_config.myo.receiver_port
+    )
+
+    receiver_config = MyoReceiverConfig(
+        host=device_config.myo.receiver_host,
+        port=receiver_port,
+    )
+
+    receiver = MyoTCPReceiver(config=receiver_config)
+    recorder = ProtocolEventRecorder()
+
+    try:
+        print(f"Starting MYO TCP receiver at {receiver_config.host}:{receiver_config.port}")
+        receiver.start()
+
+        time.sleep(0.2)
+
+        runner = ProtocolRunner(
+            config=ProtocolRunnerConfig(
+                movement_block=movement_block,
+                total_trials=total_trials,
+                seed=seed,
+                realtime=True,
+                time_scale=time_scale,
+            ),
+            event_callbacks=[recorder],
+        )
+
+        result = runner.run()
+
+        print("Protocol finished. Retrieving available MYO messages...")
+        myo_messages = receiver.get_messages()
+
+        myo_path = save_myo_csv(
+            myo_messages,
+            output_files["myo"],
+        )
+
+        events_path = save_events_csv(
+            recorder.as_event_rows(),
+            output_files["events"],
+        )
+
+        print(f"MYO messages:     {len(myo_messages)}")
+        print(f"Protocol events:  {len(result.events)}")
+        print(f"MYO saved to:     {myo_path}")
+        print(f"Events saved to:  {events_path}")
+
+        return {
+            "myo_protocol_acquisition": "completed",
+            "myo_receiver_host": receiver_config.host,
+            "myo_receiver_port": receiver_config.port,
+            "myo_message_count": len(myo_messages),
+            "myo_protocol_event_count": len(result.events),
+            "protocol_time_scale": time_scale,
+            "myo_output_file": str(myo_path),
+            "events_output_file": str(events_path),
+        }
+
+    finally:
+        print("Stopping MYO TCP receiver...")
+        receiver.stop()
 
 
 def run_myo_receiver_smoke_test(
@@ -619,6 +705,11 @@ def main() -> int:
         help="Run a short MYO TCP receiver smoke test. Requires --execute-hardware.",
     )
     parser.add_argument(
+        "--run-myo-protocol",
+        action="store_true",
+        help="Run MYO-only full protocol acquisition with the TCP receiver. Requires --execute-hardware --use-myo-receiver.",
+    )
+    parser.add_argument(
         "--myo-receiver-sec",
         type=float,
         default=1.0,
@@ -824,12 +915,29 @@ def main() -> int:
             return 4
 
     if args.use_myo_receiver:
-        myo_result = run_myo_receiver_smoke_test(
-            device_config=device_config,
-            duration_sec=args.myo_receiver_sec,
-            port_override=args.myo_receiver_port,
-        )
+        if args.run_myo_protocol:
+            myo_result = run_myo_protocol_acquisition(
+                device_config=device_config,
+                output_files=output_files,
+                movement_block=session_config.movement_block,
+                total_trials=session_config.total_trials,
+                seed=args.seed,
+                time_scale=args.protocol_time_scale,
+                port_override=args.myo_receiver_port,
+            )
+        else:
+            myo_result = run_myo_receiver_smoke_test(
+                device_config=device_config,
+                duration_sec=args.myo_receiver_sec,
+                port_override=args.myo_receiver_port,
+            )
+
         metadata.update(myo_result)
+
+        if args.run_myo_protocol:
+            save_metadata_json(metadata, output_files["metadata"])
+            print("")
+            print(f"Metadata saved to: {output_files['metadata']}")
 
     print("")
     print("Selected hardware block execution completed.")
