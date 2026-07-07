@@ -182,3 +182,32 @@ Pending:
 - Save EEG stream data from the full protocol.
 - Compare exported event CSV with MindRove marker timing.
 - Extend the same protocol runner structure to sEMG and MYO acquisition.
+
+## EEG-only full protocol acquisition mode
+
+The acquisition entry point now includes a protected EEG-only full protocol acquisition mode:
+
+~~~bash
+python scripts/acquisition/run_acquisition_training.py --subject-id sub-001 --session-id ses-01 --movement-block Codo --total-trials 4 --execute-hardware --use-mindrove --run-eeg-protocol
+~~~
+
+Current status:
+
+- Starts MindRove EEG streaming before the protocol.
+- Runs the timed protocol using `ProtocolRunner`.
+- Inserts protocol markers into the EEG stream using `DeviceMarkerCallback`.
+- Records protocol events using `ProtocolEventRecorder`.
+- Retrieves available EEG data after protocol completion.
+- Saves EEG, events, and metadata files.
+- Closes the MindRove session safely.
+
+Design note:
+
+The EEG stream is managed explicitly by the acquisition entry point. The protocol controls timing and markers, but hardware acquisition is not treated as a rigid timer-controlled process.
+
+Pending validation:
+
+- Test with the real MindRove device.
+- Verify that saved EEG shape is correct.
+- Verify that event CSV timing matches inserted EEG markers.
+- Confirm behavior during manual interruption.
